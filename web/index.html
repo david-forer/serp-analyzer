@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SERP Analyzer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SERP Analyzer</h1>
+            <p class="subtitle">Analyze search results for content strategy insights</p>
+        </header>
+
+        <section class="search-section">
+            <div class="search-box">
+                <input type="text" id="query" placeholder="Enter search query..." autofocus>
+                <button id="analyzeBtn" onclick="runAnalysis()">Analyze</button>
+            </div>
+
+            <div class="options">
+                <div class="option-group">
+                    <label>Results:</label>
+                    <select id="numResults">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="15">15</option>
+                        <option value="20">20</option>
+                    </select>
+                </div>
+
+                <div class="option-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="detectIntent" checked>
+                        Intent Detection
+                    </label>
+                </div>
+
+                <div class="option-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="classify" checked>
+                        Classification
+                    </label>
+                </div>
+
+                <div class="option-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="strategy" checked>
+                        Content Strategy
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Analyzing search results...</p>
+        </div>
+
+        <div id="error" class="error hidden"></div>
+
+        <section id="results" class="results hidden">
+            <div class="tabs">
+                <button class="tab active" data-tab="overview">Overview</button>
+                <button class="tab" data-tab="intent">Intent</button>
+                <button class="tab" data-tab="strategy">Strategy</button>
+                <button class="tab" data-tab="serp">SERP Results</button>
+                <button class="tab" data-tab="export">Export</button>
+            </div>
+
+            <div class="tab-content">
+                <!-- Overview Tab -->
+                <div id="overview" class="tab-pane active">
+                    <div class="overview-grid">
+                        <div class="stat-card">
+                            <h3>Query</h3>
+                            <p id="stat-query">-</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Results</h3>
+                            <p id="stat-results">-</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Dominant Type</h3>
+                            <p id="stat-dominant">-</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Content Format</h3>
+                            <p id="stat-format">-</p>
+                        </div>
+                    </div>
+                    <div class="distribution" id="distribution"></div>
+                </div>
+
+                <!-- Intent Tab -->
+                <div id="intent" class="tab-pane">
+                    <div class="intent-section">
+                        <h3>User Intent</h3>
+                        <p id="intent-description" class="intent-description">-</p>
+                        <div class="intent-meta">
+                            <span class="badge" id="intent-type">-</span>
+                            <span class="confidence" id="intent-confidence">-</span>
+                        </div>
+                        <div class="signals" id="intent-signals"></div>
+                        <div class="reasoning">
+                            <h4>Reasoning</h4>
+                            <p id="intent-reasoning">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Strategy Tab -->
+                <div id="strategy" class="tab-pane">
+                    <div class="strategy-section">
+                        <div class="recommendation">
+                            <h3>Recommended Content</h3>
+                            <p id="strategy-type" class="strategy-type">-</p>
+                            <p id="strategy-format" class="strategy-format">-</p>
+                        </div>
+                        <div class="angle">
+                            <h4>Angle</h4>
+                            <p id="strategy-angle">-</p>
+                        </div>
+                        <div class="elements">
+                            <h4>Required Elements</h4>
+                            <ul id="strategy-elements"></ul>
+                        </div>
+                        <div class="strategy-reasoning">
+                            <h4>Why This Approach</h4>
+                            <ul id="strategy-reasoning"></ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SERP Results Tab -->
+                <div id="serp" class="tab-pane">
+                    <div id="serp-results" class="serp-results"></div>
+                </div>
+
+                <!-- Export Tab -->
+                <div id="export" class="tab-pane">
+                    <div class="export-section">
+                        <h3>Export Analysis</h3>
+                        <p>Save your analysis results to files.</p>
+                        <div class="export-buttons">
+                            <button onclick="exportJson()" class="export-btn">
+                                <span class="icon">{ }</span>
+                                Export JSON
+                            </button>
+                            <button onclick="exportCsv()" class="export-btn">
+                                <span class="icon">csv</span>
+                                Export CSV
+                            </button>
+                            <button onclick="exportAll()" class="export-btn primary">
+                                <span class="icon">*</span>
+                                Export All
+                            </button>
+                        </div>
+                        <div id="export-status" class="export-status"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

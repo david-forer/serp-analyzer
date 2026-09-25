@@ -21,8 +21,8 @@ class ContentStrategyAnalyzer:
         ]
         
         self.comparison_keywords = [
-            'vs', 'versus', 'compared', 'comparison', 'alternative', 
-            'or', 'which', 'better', 'difference'
+            'vs', 'versus', 'compared', 'comparison', 'alternative',
+            'difference'
         ]
         
         self.review_keywords = [
@@ -43,6 +43,11 @@ class ContentStrategyAnalyzer:
             'specs': ['specifications', 'specs', 'technical', 'requirements']
         }
     
+    @staticmethod
+    def _has_word(text: str, keyword: str) -> bool:
+        """True if keyword appears as a whole word or phrase, not inside another word"""
+        return re.search(r'\b' + re.escape(keyword) + r'\b', text) is not None
+
     def analyze(self, query: str, results: List[Dict[str, Any]], 
                 user_intent: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -103,9 +108,9 @@ class ContentStrategyAnalyzer:
             'has_numbers': sum(1 for t in titles if re.search(r'\d+', t)),
             'is_listicle': sum(1 for t in titles if any(re.search(p, t.lower()) for p in self.listicle_patterns)),
             'has_year': sum(1 for t in titles if re.search(r'202[3-9]', t)),
-            'has_comparison': sum(1 for t in titles if any(kw in t.lower() for kw in self.comparison_keywords)),
-            'has_review': sum(1 for t in titles if any(kw in t.lower() for kw in self.review_keywords)),
-            'has_guide': sum(1 for t in titles if any(kw in t.lower() for kw in self.buying_guide_keywords)),
+            'has_comparison': sum(1 for t in titles if any(self._has_word(t.lower(), kw) for kw in self.comparison_keywords)),
+            'has_review': sum(1 for t in titles if any(self._has_word(t.lower(), kw) for kw in self.review_keywords)),
+            'has_guide': sum(1 for t in titles if any(self._has_word(t.lower(), kw) for kw in self.buying_guide_keywords)),
             'has_best_top': sum(1 for t in titles if re.search(r'\b(best|top)\b', t.lower())),
         }
         
@@ -129,9 +134,9 @@ class ContentStrategyAnalyzer:
         
         format_signals = {
             'listicle_score': sum(1 for p in self.listicle_patterns if re.search(p, combined_text)),
-            'comparison_score': sum(1 for kw in self.comparison_keywords if kw in combined_text),
-            'review_score': sum(1 for kw in self.review_keywords if kw in combined_text),
-            'guide_score': sum(1 for kw in self.buying_guide_keywords if kw in combined_text),
+            'comparison_score': sum(1 for kw in self.comparison_keywords if self._has_word(combined_text, kw)),
+            'review_score': sum(1 for kw in self.review_keywords if self._has_word(combined_text, kw)),
+            'guide_score': sum(1 for kw in self.buying_guide_keywords if self._has_word(combined_text, kw)),
         }
         
         # Determine dominant format

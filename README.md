@@ -1,31 +1,37 @@
 # SERP Analyzer
 
-SERP Analyzer is a Windows desktop app for writers. Type in a search, and it reads the top 10 Google results, then tells you whether the topic is worth writing about and what kind of piece to write. It was built for writers without an SEO background, so the answers come in plain language.
+SERP Analyzer is a Windows desktop app for writers. Type in a search, and it reads the top 10 Google results, then tells you what kind of piece Google rewards for that search and who you'd be competing with. It was built for writers without an SEO background, so the answers come in plain language.
 
-For the search "ai audit for small business", the verdict was:
+For the search "AI readiness assessment framework", it reported:
 
 ```
-VERDICT: Write it. How-to guide with service page elements. Competition looks
-beatable: 3 of 10 top results are forum, community or self-published posts.
+Explainer. 9 of 10 results are explainers.
+Competition: Crowded. Big names hold 4 and established brands hold 1 of the top 10.
+Big names: undp.org, cisco.com, microsoft.com, aiforgood.itu.int
 ```
 
 ## What the app shows
 
-Results appear on 5 tabs.
+The left side of the window holds the search box, a competition scale (Open, Mixed or Crowded) and a meter showing how clear the format is, meaning how strongly the top results agree on one format.
 
-- Overview has the verdict, the mix of result types, and anything else Google shows on the page, such as People Also Ask questions or an AI Overview.
-- Intent describes what the person searching most likely wants.
-- Strategy has the full recommendation: the type of piece, its format and angle, what to include, and the reasons behind each call. It also lists People Also Ask questions to answer, off-topic questions it removed, and related searches to check next.
-- SERP Results lists each of the top 10 with its purpose and page type.
-- Export saves the analysis as JSON, CSV and a plain-text summary.
+The right side reads top to bottom:
+
+- The format Google rewards, with a count of the results behind it and the angle to take. When courses, products, directories or tools lead the results, a "Heads up" note says an article will struggle to rank.
+- Competition, with a line on what the rating means for your site, then the counts and names behind it.
+- What to include, the People Also Ask questions readers have, other signals from the page, and related searches. Click a related search to check it.
+- The details: what searchers want, a breakdown of page types in the top 10, what else Google shows on the page, and the full top 10 with links.
+
+"See all 10 results" opens every result with its snippet, and "Save as file" exports the analysis as JSON, CSV and a plain-text summary.
 
 ## How it works
 
-The app fetches the top 10 results for your search. An OpenAI model then labels each one with a page type, such as how-to guide, explainer, service page, forum thread or course page. The recommendation comes from counting those labels. If 4 results are how-to guides and 3 are service pages, it suggests a how-to guide that also covers cost and timeline.
+The app fetches the top 10 results for your search. An OpenAI model then labels each one with a page type, such as how-to guide, explainer, service page, forum thread or course page, and with how well known the site behind it is. The format recommendation comes from counting the page types. If 4 results are how-to guides and 3 are service pages, it suggests a how-to guide that also covers cost and timeline.
 
-Next it reads the rest of the results page. People Also Ask questions become a starting outline, after a second check removes questions about a different meaning of the search. Forum threads and self-published posts in the top 10 suggest the competition is beatable. When course, product or directory pages lead the results, an article will struggle to rank, and the verdict says so.
+The competition rating comes from counting who ranks. Big names are organizations most people in the US would recognize, plus any .gov, .edu or .int site. Established brands are well known within their industry. With 4 or more big names, or 7 or more big names and established brands combined, competition is Crowded. With 3 or fewer combined, it's Open. Anything in between is Mixed. Forum and community posts in the top 10 are noted, since they usually mean good content is scarce.
 
-The app reads titles, snippets and the results page. It does not open the ranking pages, so it has no word counts or backlink data. Treat the verdict as a well-informed starting point.
+People Also Ask questions become a starting outline, after a second check removes questions about a different meaning of the search.
+
+The app describes the competition. It does not predict whether you can rank, because that depends mostly on your own site, which the app can't see. It also reads only titles, snippets and the results page, so it has no word counts or backlink data.
 
 ## What you need
 

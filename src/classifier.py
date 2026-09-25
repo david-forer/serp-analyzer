@@ -55,11 +55,16 @@ Snippet: {snippet}
 Respond with a JSON object containing:
 - category: one of the categories above
 - page_type: one of the page types above
+- brand_tier: how well known the organization behind the site is, one of:
+  - household: most people in the US would recognize the name. Examples: Microsoft, IBM, Amazon, Google, Forbes, Wikipedia, the UN, Harvard, a national government body
+  - established: well known within its industry or a large company, even if the general public has not heard of it. Examples: Zapier, Asana, HubSpot, Gartner, Deloitte, Salesforce's Slack, Investopedia
+  - small: small and mid-size businesses, agencies, consultancies, lesser-known software vendors, startups, independent blogs and individuals
+  If unsure, choose small.
 - confidence: a number between 0 and 1
 - reasoning: brief explanation (1-2 sentences)
 
 Example response:
-{{"category": "informational", "page_type": "how_to_guide", "confidence": 0.92, "reasoning": "This is a how-to guide explaining a process."}}"""
+{{"category": "informational", "page_type": "how_to_guide", "brand_tier": "small", "confidence": 0.92, "reasoning": "This is a how-to guide explaining a process."}}"""
         
         try:
             response = openai.ChatCompletion.create(
@@ -68,7 +73,7 @@ Example response:
                     {"role": "system", "content": "You are a search result classifier. Always respond with valid JSON only."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,
+                temperature=0,
                 max_tokens=200
             )
             

@@ -2,6 +2,7 @@
 import re
 from typing import Dict, Any, List
 from collections import Counter
+from urllib.parse import urlparse
 import logging
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,7 @@ PAGE_TYPE_PROFILES = {
         'label': 'Service page', 'plural': 'service pages',
         'format': 'Offer page',
         'angle': 'Show what the service is, who it is for and what it costs.',
-        'as_second': 'Be clear about cost, timeline and what the reader gets, since service pages rank here too.',
+        'as_second': 'Also cover cost, timeline and what the reader gets, since pages selling this service rank here too.',
         'elements': ['What is included', 'Price or price range', 'Timeline',
                      'What the client walks away with'],
     },
@@ -66,7 +67,7 @@ PAGE_TYPE_PROFILES = {
         'angle': 'Describe one product in detail.',
         'as_second': 'Mention specific products with prices, since product pages rank here too.',
         'elements': ['Product details', 'Pricing', 'A clear call to action'],
-        'warning': 'Product pages lead this SERP. An article will struggle to rank, so consider a different query.',
+        'warning': 'Product pages lead these results. An article will struggle to rank, so consider a different search.',
     },
     'category_page': {
         'label': 'Category or directory page', 'plural': 'category or directory pages',
@@ -74,7 +75,7 @@ PAGE_TYPE_PROFILES = {
         'angle': 'Gather many options in one place.',
         'as_second': 'Cover several options, since directory pages rank here too.',
         'elements': ['Many options in one place', 'Groupings or filters', 'Short descriptions'],
-        'warning': 'Store and directory pages lead this SERP. An article will struggle to rank, so consider a different query.',
+        'warning': 'Store and directory pages lead these results. An article will struggle to rank, so consider a different search.',
     },
     'tool': {
         'label': 'Free tool', 'plural': 'tools',
@@ -82,7 +83,7 @@ PAGE_TYPE_PROFILES = {
         'angle': 'Give the reader something to use, not just read.',
         'as_second': 'Consider adding a template or checklist, since tools rank here too.',
         'elements': ['A working tool, template or checklist', 'A short guide to using it'],
-        'warning': 'Tools lead this SERP. A plain article will struggle unless it includes something usable.',
+        'warning': 'Tools lead these results. A plain article will struggle unless it includes something usable.',
     },
     'video': {
         'label': 'Video', 'plural': 'videos',
@@ -95,7 +96,7 @@ PAGE_TYPE_PROFILES = {
         'label': 'Discussion-style article', 'plural': 'forum threads',
         'format': 'Q&A with first-hand answers',
         'angle': 'Answer the questions real people ask, from experience.',
-        'as_second': 'Include first-hand experience, since forum threads rank here too. That usually means good content is scarce for this query.',
+        'as_second': 'Include first-hand experience, since forum threads rank here too. That usually means good content is scarce for this search.',
         'elements': ['Real questions people ask', 'Direct answers from experience',
                      'Trade-offs, not just upsides'],
     },
@@ -119,7 +120,7 @@ PAGE_TYPE_PROFILES = {
         'angle': 'Show who the training is for and what it covers.',
         'as_second': 'Mention relevant courses or certifications, since program pages rank here too.',
         'elements': ['Who it is for', 'What it covers', 'Cost and time commitment'],
-        'warning': 'Course and certification pages lead this SERP, which usually means people want training rather than an article.',
+        'warning': 'Course and certification pages lead these results, which usually means people want training rather than an article.',
     },
     'other': {
         'label': 'General article', 'plural': 'other pages',
@@ -180,7 +181,8 @@ class ContentStrategyAnalyzer:
         """
         analysis = {
             'query': query,
-            'total_results_analyzed': len(results)
+            'total_results_analyzed': len(results),
+            'results': results,
         }
         
         # Page types from the classifier drive the recommendation when available
@@ -208,6 +210,8 @@ class ContentStrategyAnalyzer:
             analysis, user_intent, query
         )
         
+        # The results are already stored at the top level of the export, so don't duplicate them here
+        analysis.pop('results', None)
         return analysis
     
     def _analyze_result_distribution(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -354,53 +358,97 @@ class ContentStrategyAnalyzer:
         
         self._apply_serp_features(rec, analysis.get('serp_features', {}),
                                   analysis.get('total_results_analyzed', 0))
-        rec['verdict'] = self._build_verdict(rec, analysis)
+        rec['competition'] = self._describe_competition(analysis)
         return rec
     
     # Sites where regular people post. Their presence in the top 10 means content supply is thin.
     COMMUNITY_DOMAINS = ('reddit.com', 'quora.com', 'medium.com', 'substack.com',
-                         'linkedin.com/pulse', 'stackexchange.com', 'community.')
+                         'linkedin.com/pulse', 'linkedin.com/posts', 'stackexchange.com',
+                         'facebook.com/groups', 'community.')
+    # Domain endings that always mean a government, university or international body
+    INSTITUTION_SUFFIXES = ('.gov', '.edu', '.int', '.mil')
+    # Platforms where the content belongs to an individual creator, so the platform's size doesn't count
+    CREATOR_PLATFORMS = ('youtube.com', 'tiktok.com', 'instagram.com', 'x.com', 'twitter.com')
+    
+    def _is_community(self, r: Dict[str, Any]) -> bool:
+        url = (r.get('url') or '').lower()
+        is_forum = r.get('classification', {}).get('page_type') == 'forum_thread'
+        return is_forum or any(d in url for d in self.COMMUNITY_DOMAINS)
+    
+    def _brand_tier(self, r: Dict[str, Any]) -> str:
+        """household, established or small. Community posts and creator videos count as small."""
+        if self._is_community(r):
+            return 'small'  # a Reddit or LinkedIn post is someone's personal post, not the platform's
+        host = urlparse(r.get('url') or '').netloc.lower()
+        if any(host == p or host.endswith('.' + p) for p in self.CREATOR_PLATFORMS):
+            return 'small'
+        if any(host.endswith(s) or f"{s}." in host for s in self.INSTITUTION_SUFFIXES):
+            return 'household'
+        tier = r.get('classification', {}).get('brand_tier', 'small')
+        return tier if tier in ('household', 'established') else 'small'
     
     def _count_community_results(self, results: List[Dict[str, Any]]) -> int:
         """Count forum, Q&A and self-published results in the top results"""
-        count = 0
-        for r in results:
-            url = (r.get('url') or '').lower()
-            is_forum = r.get('classification', {}).get('page_type') == 'forum_thread'
-            if is_forum or any(d in url for d in self.COMMUNITY_DOMAINS):
-                count += 1
-        return count
+        return sum(1 for r in results if self._is_community(r))
     
-    def _build_verdict(self, rec: Dict[str, Any], analysis: Dict[str, Any]) -> Dict[str, str]:
-        """One plain-language answer to 'should I write this, and what?'"""
-        page_types = analysis.get('page_types', {})
-        ranked = page_types.get('ranked', [])
-        top_profile = PAGE_TYPE_PROFILES.get(ranked[0][0], {}) if ranked else {}
+    def _describe_competition(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Describe who ranks, without predicting whether a given writer can rank.
+        That depends mostly on the writer's own site, which this tool cannot see.
+        """
+        results = analysis.get('results', [])
+        total = len(results)
         community = analysis.get('community_count', 0)
-        total = analysis.get('total_results_analyzed', 0)
-        confidence = rec.get('confidence', 0)
+        tiers = [(r, self._brand_tier(r)) for r in results]
+        household = [r for r, t in tiers if t == 'household']
+        established = [r for r, t in tiers if t == 'established']
+        strong = len(household) + len(established)
         
-        if top_profile.get('warning'):
-            decision = 'Probably skip'
-            reason = top_profile['warning']
-        elif community >= 2:
-            decision = 'Write it'
-            reason = (f"Competition looks beatable: {community} of {total} top results are forum, "
-                      "community or self-published posts.")
-        elif confidence < 0.5:
-            decision = 'Write it with care'
-            reason = ("The top results are a mix of formats, so Google has not settled on one answer. "
-                      "Pick the angle that fits you best.")
+        def domains(rows):
+            out = []
+            for r in rows:
+                d = urlparse(r.get('url') or '').netloc.lower().replace('www.', '')
+                if d and d not in out:
+                    out.append(d)
+            return out
+        
+        if strong == 0:
+            who = f"No big names or established brands rank in the top {total}"
         else:
-            decision = 'Write it'
-            reason = "Match the format of what already ranks and cover it better."
+            who = f"Big names hold {len(household)} and established brands hold {len(established)} of the top {total}"
+        forum_note = ""
+        if community:
+            forum_note = (f" {community} forum or community "
+                          f"{'post ranks' if community == 1 else 'posts rank'}, which usually means good content is scarce.")
         
-        if analysis.get('serp_features', {}).get('ai_overview') and decision != 'Probably skip':
-            reason += " An AI Overview sits above the results, so expect fewer clicks."
+        # Forum posts are mentioned as a signal but do not change the level
+        if len(household) >= 4 or strong >= 7:
+            level = 'Crowded'
+            summary = f"{who}." + forum_note
+        elif strong <= 3:
+            level = 'Open'
+            summary = f"{who}. Smaller sites hold most of the top spots." + forum_note
+        else:
+            level = 'Mixed'
+            summary = f"{who}, alongside smaller sites. The top spots are contested." + forum_note
+        
+        # What each level means for a writer, phrased as conditions rather than a prediction
+        meaning = {
+            'Open': "A newer site has a realistic chance here.",
+            'Mixed': "Worth it if your piece is clearly better than what already ranks.",
+            'Crowded': ("Best for sites that already have authority on this topic. "
+                        "Otherwise, try a narrower related search."),
+        }[level]
         
         return {
-            'decision': decision,
-            'summary': f"{decision}. {rec.get('content_type', '')}. {reason}",
+            'level': level,
+            'meaning': meaning,
+            'summary': summary,
+            'big_names': len(household),
+            'established': len(established),
+            'community': community,
+            'big_name_domains': domains(household),
+            'established_domains': domains(established),
         }
     
     def _analyze_page_types(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -418,7 +466,9 @@ class ContentStrategyAnalyzer:
         
         top_type, top_count = ranked[0]
         top = PAGE_TYPE_PROFILES[top_type]
-        second_type, second_count = ranked[1] if len(ranked) > 1 else (None, 0)
+        # Forum threads count as a competition signal, not a format to copy, so they are never blended in
+        runners_up = [(t, c) for t, c in ranked[1:] if t != 'forum_thread']
+        second_type, second_count = runners_up[0] if runners_up else (None, 0)
         
         # Blend in the runner-up when it holds at least 2 spots and a quarter of the results
         is_hybrid = second_type is not None and second_count >= 2 and second_count / total >= 0.25
@@ -445,14 +495,6 @@ class ContentStrategyAnalyzer:
         if top.get('warning'):
             reasoning.append(top['warning'])
         
-        # Forum threads anywhere in the top results signal thin content supply
-        forum_count = page_types['counts'].get('forum_thread', 0)
-        if forum_count and top_type != 'forum_thread':
-            reasoning.append(
-                f"{forum_count} forum thread(s) rank in the top results, "
-                "a sign that good content on this topic is scarce"
-            )
-        
         return {
             'content_type': content_type,
             'format': top['format'],
@@ -461,6 +503,10 @@ class ContentStrategyAnalyzer:
             'reasoning': reasoning,
             'confidence': round(min(confidence, 0.95), 2),
             'page_type_counts': page_types['counts'],
+            'format_summary': reasoning[0],
+            'format_warning': top.get('warning', ''),
+            # Plain headline for writers: just the leading format. The blend is explained in the angle.
+            'headline': top['label'],
         }
     
     def _apply_serp_features(self, rec: Dict[str, Any], features: Dict[str, Any],
@@ -475,8 +521,9 @@ class ContentStrategyAnalyzer:
         if paa:
             rec['questions_to_answer'] = paa
             rec['required_elements'].append('Answer the People Also Ask questions (listed below)')
+            questions_word = "question" if len(paa) == 1 else "questions"
             rec['reasoning'].append(
-                f"Google shows {len(paa)} People Also Ask questions, a ready-made outline"
+                f"Google shows {len(paa)} People Also Ask {questions_word}, a ready-made outline"
             )
         
         related = features.get('related_searches', [])

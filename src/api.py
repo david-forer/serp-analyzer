@@ -9,7 +9,7 @@ src_dir = Path(__file__).parent
 if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
-from serper_search import SerperClient
+from dataforseo_search import get_search_client
 from intent_detector import IntentDetector
 from classifier import ResultClassifier
 from content_strategy_analyzer import ContentStrategyAnalyzer
@@ -43,7 +43,7 @@ class Api:
         """
         try:
             # Fetch search results
-            search_client = SerperClient()
+            search_client = get_search_client()
             results = search_client.search(query, num_results=num_results)
 
             if not results:
@@ -55,7 +55,8 @@ class Api:
                 "query": query,
                 "timestamp": timestamp,
                 "total_results": len(results),
-                "results": results
+                "results": results,
+                "serp_features": search_client.last_features
             }
 
             # Step 1: Detect user intent
@@ -78,6 +79,14 @@ class Api:
 
                 analysis["classification_summary"] = classification_summary
 
+                features = analysis.get("serp_features") or {}
+                if features.get("people_also_ask"):
+                    filtered = classifier.filter_questions(
+                        query, features["people_also_ask"], [r.get("title", "") for r in results]
+                    )
+                    features["people_also_ask"] = filtered["keep"]
+                    features["people_also_ask_removed"] = filtered["removed"]
+
             # Step 3: Generate content strategy recommendation
             if strategy:
                 strategy_analyzer = ContentStrategyAnalyzer()
@@ -85,7 +94,8 @@ class Api:
                 strategy_analysis = strategy_analyzer.analyze(
                     query=query,
                     results=analysis["results"],
-                    user_intent=user_intent
+                    user_intent=user_intent,
+                    serp_features=analysis.get("serp_features")
                 )
                 analysis["content_strategy"] = strategy_analysis
 

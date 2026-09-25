@@ -135,6 +135,19 @@ python -m src.cli "buy running shoes" -n 10 -f csv --no-intent
 python -m src.cli "weather forecast" --no-classify
 ```
 
+## Search API Decisions
+
+A running log of which search API this tool uses and why. Newest first.
+
+**2026-09-25: Switched to DataForSEO. Serper kept as a fallback.**
+The raw Serper responses settled the question. Two searches were tested: "ai audit for small business" and "how does compound interest work", a search that almost always shows an AI Overview in Google. Both Serper responses contained only organic results, People Also Ask and related searches. Neither contained an AI Overview or a featured snippet, so Serper's standard search does not pass these through. DataForSEO's Live Advanced endpoint returns every SERP element as its own item, including AI Overviews with the sources they cite, featured snippets, and Discussions and forums blocks. Those are the signals that tell a writer what format Google prefers, so the switch was worth the extra setup. Cost is about $0.002 per search, plus $0.002 for the AI Overview option, which DataForSEO refunds when no AI Overview appears. It needs a $50 minimum deposit and a login and API password instead of a single key. The app uses DataForSEO whenever `DATAFORSEO_LOGIN` and `DATAFORSEO_PASSWORD` are set in `.env`, and falls back to Serper otherwise.
+
+**2026-09-25: Tested whether Serper returns AI Overviews.**
+Serper was the search source at this point. It needs a single API key, which keeps setup simple for writers trying the tool. Published comparisons disagreed on whether Serper returns Google's AI Overview, and the AI Overview is one of the most useful signals for deciding what to write. To settle it with real data, the app was changed to save every raw search response to `outputs/raw/` and to show on the Overview tab whether an AI Overview was found. DataForSEO was lined up as the replacement if Serper failed the test, because its documentation confirms AI Overview support through the `load_async_ai_overview` option.
+
+**Earlier: Google Custom Search API replaced by Serper.**
+The first version of this tool used Google's Custom Search JSON API. It was replaced by Serper, but the reason was not recorded at the time.
+
 ## License
 
 MIT License

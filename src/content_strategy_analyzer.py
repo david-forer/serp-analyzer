@@ -7,6 +7,130 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# What a writer should build when a given page type leads the SERP.
+# "as_second" is used when the type is the runner-up and gets blended in.
+# "warning" flags SERPs where an article is unlikely to rank.
+PAGE_TYPE_PROFILES = {
+    'how_to_guide': {
+        'label': 'How-to guide', 'plural': 'how-to guides',
+        'format': 'Step-by-step guide',
+        'angle': 'Walk the reader through doing it themselves, in order.',
+        'as_second': 'Include practical steps the reader can follow, since how-to guides rank here too.',
+        'elements': ['Numbered steps the reader can follow',
+                     'What the reader needs before starting',
+                     'Common mistakes to avoid'],
+    },
+    'explainer': {
+        'label': 'Explainer', 'plural': 'explainers',
+        'format': 'Definition first, then how it works',
+        'angle': 'Explain it clearly for someone new to the topic.',
+        'as_second': 'Open with a plain definition, since explainer pages rank here too.',
+        'elements': ['A plain one or two sentence definition near the top',
+                     'How it works, broken into parts',
+                     'Real examples'],
+    },
+    'listicle': {
+        'label': 'List article', 'plural': 'list articles',
+        'format': 'Numbered list',
+        'angle': 'Give the reader a scannable set of options or tips.',
+        'as_second': 'Consider a numbered section, since list articles rank here too.',
+        'elements': ['A number in the title',
+                     'A short take on each item',
+                     'A quick pick for different readers'],
+    },
+    'comparison': {
+        'label': 'Comparison article', 'plural': 'comparison articles',
+        'format': 'Side-by-side comparison',
+        'angle': 'Help the reader choose between specific options.',
+        'as_second': 'Add a short comparison of the main options, since comparison pages rank here too.',
+        'elements': ['A comparison table', 'Who each option suits', 'A clear verdict'],
+    },
+    'review': {
+        'label': 'Review', 'plural': 'reviews',
+        'format': 'Structured review',
+        'angle': 'Share a first-hand evaluation.',
+        'as_second': 'Include first-hand evaluation, since reviews rank here too.',
+        'elements': ['First-hand findings', 'Pros and cons', 'A verdict'],
+    },
+    'service_page': {
+        'label': 'Service page', 'plural': 'service pages',
+        'format': 'Offer page',
+        'angle': 'Show what the service is, who it is for and what it costs.',
+        'as_second': 'Be clear about cost, timeline and what the reader gets, since service pages rank here too.',
+        'elements': ['What is included', 'Price or price range', 'Timeline',
+                     'What the client walks away with'],
+    },
+    'product_page': {
+        'label': 'Product page', 'plural': 'product pages',
+        'format': 'Product page',
+        'angle': 'Describe one product in detail.',
+        'as_second': 'Mention specific products with prices, since product pages rank here too.',
+        'elements': ['Product details', 'Pricing', 'A clear call to action'],
+        'warning': 'Product pages lead this SERP. An article will struggle to rank, so consider a different query.',
+    },
+    'category_page': {
+        'label': 'Category or directory page', 'plural': 'category or directory pages',
+        'format': 'Listing page',
+        'angle': 'Gather many options in one place.',
+        'as_second': 'Cover several options, since directory pages rank here too.',
+        'elements': ['Many options in one place', 'Groupings or filters', 'Short descriptions'],
+        'warning': 'Store and directory pages lead this SERP. An article will struggle to rank, so consider a different query.',
+    },
+    'tool': {
+        'label': 'Free tool', 'plural': 'tools',
+        'format': 'Interactive tool',
+        'angle': 'Give the reader something to use, not just read.',
+        'as_second': 'Consider adding a template or checklist, since tools rank here too.',
+        'elements': ['A working tool, template or checklist', 'A short guide to using it'],
+        'warning': 'Tools lead this SERP. A plain article will struggle unless it includes something usable.',
+    },
+    'video': {
+        'label': 'Video', 'plural': 'videos',
+        'format': 'Video, or an article with an embedded video',
+        'angle': 'Show it rather than tell it.',
+        'as_second': 'Consider embedding a video, since video results rank here too.',
+        'elements': ['A video or clear visuals', 'A written summary of each step'],
+    },
+    'forum_thread': {
+        'label': 'Discussion-style article', 'plural': 'forum threads',
+        'format': 'Q&A with first-hand answers',
+        'angle': 'Answer the questions real people ask, from experience.',
+        'as_second': 'Include first-hand experience, since forum threads rank here too. That usually means good content is scarce for this query.',
+        'elements': ['Real questions people ask', 'Direct answers from experience',
+                     'Trade-offs, not just upsides'],
+    },
+    'news_article': {
+        'label': 'News or timely update', 'plural': 'news articles',
+        'format': 'News-style update',
+        'angle': 'Cover what changed and why it matters now.',
+        'as_second': 'Mention recent developments with dates, since news ranks here too.',
+        'elements': ['What happened', 'Why it matters', 'A visible date'],
+    },
+    'research_paper': {
+        'label': 'In-depth research piece', 'plural': 'research papers',
+        'format': 'Long-form article with sources',
+        'angle': 'Go deep and cite your sources.',
+        'as_second': 'Cite research and data, since academic sources rank here too.',
+        'elements': ['Cited sources', 'Data or findings', 'How the findings were reached'],
+    },
+    'program_page': {
+        'label': 'Program or course page', 'plural': 'program and course pages',
+        'format': 'Program page',
+        'angle': 'Show who the training is for and what it covers.',
+        'as_second': 'Mention relevant courses or certifications, since program pages rank here too.',
+        'elements': ['Who it is for', 'What it covers', 'Cost and time commitment'],
+        'warning': 'Course and certification pages lead this SERP, which usually means people want training rather than an article.',
+    },
+    'other': {
+        'label': 'General article', 'plural': 'other pages',
+        'format': 'Article',
+        'angle': 'Cover the topic clearly.',
+        'as_second': '',
+        'elements': ['A clear answer to the search'],
+    },
+}
+
+
 class ContentStrategyAnalyzer:
     """
     Analyzes SERP results to determine what type of content to create.
@@ -49,7 +173,8 @@ class ContentStrategyAnalyzer:
         return re.search(r'\b' + re.escape(keyword) + r'\b', text) is not None
 
     def analyze(self, query: str, results: List[Dict[str, Any]], 
-                user_intent: Dict[str, Any] = None) -> Dict[str, Any]:
+                user_intent: Dict[str, Any] = None,
+                serp_features: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Main analysis method - returns content strategy recommendations
         """
@@ -57,6 +182,11 @@ class ContentStrategyAnalyzer:
             'query': query,
             'total_results_analyzed': len(results)
         }
+        
+        # Page types from the classifier drive the recommendation when available
+        analysis['page_types'] = self._analyze_page_types(results)
+        analysis['serp_features'] = serp_features or {}
+        analysis['community_count'] = self._count_community_results(results)
         
         # Analyze result type distribution
         analysis['result_distribution'] = self._analyze_result_distribution(results)
@@ -214,6 +344,181 @@ class ContentStrategyAnalyzer:
                                  user_intent: Dict[str, Any], 
                                  query: str) -> Dict[str, Any]:
         """Generate specific content strategy recommendation"""
+        page_types = analysis.get('page_types', {})
+        
+        if page_types.get('ranked'):
+            rec = self._recommend_from_page_types(page_types)
+        else:
+            # Fallback when classification was skipped: keyword scoring on titles and snippets
+            rec = self._recommend_from_keywords(analysis, user_intent)
+        
+        self._apply_serp_features(rec, analysis.get('serp_features', {}),
+                                  analysis.get('total_results_analyzed', 0))
+        rec['verdict'] = self._build_verdict(rec, analysis)
+        return rec
+    
+    # Sites where regular people post. Their presence in the top 10 means content supply is thin.
+    COMMUNITY_DOMAINS = ('reddit.com', 'quora.com', 'medium.com', 'substack.com',
+                         'linkedin.com/pulse', 'stackexchange.com', 'community.')
+    
+    def _count_community_results(self, results: List[Dict[str, Any]]) -> int:
+        """Count forum, Q&A and self-published results in the top results"""
+        count = 0
+        for r in results:
+            url = (r.get('url') or '').lower()
+            is_forum = r.get('classification', {}).get('page_type') == 'forum_thread'
+            if is_forum or any(d in url for d in self.COMMUNITY_DOMAINS):
+                count += 1
+        return count
+    
+    def _build_verdict(self, rec: Dict[str, Any], analysis: Dict[str, Any]) -> Dict[str, str]:
+        """One plain-language answer to 'should I write this, and what?'"""
+        page_types = analysis.get('page_types', {})
+        ranked = page_types.get('ranked', [])
+        top_profile = PAGE_TYPE_PROFILES.get(ranked[0][0], {}) if ranked else {}
+        community = analysis.get('community_count', 0)
+        total = analysis.get('total_results_analyzed', 0)
+        confidence = rec.get('confidence', 0)
+        
+        if top_profile.get('warning'):
+            decision = 'Probably skip'
+            reason = top_profile['warning']
+        elif community >= 2:
+            decision = 'Write it'
+            reason = (f"Competition looks beatable: {community} of {total} top results are forum, "
+                      "community or self-published posts.")
+        elif confidence < 0.5:
+            decision = 'Write it with care'
+            reason = ("The top results are a mix of formats, so Google has not settled on one answer. "
+                      "Pick the angle that fits you best.")
+        else:
+            decision = 'Write it'
+            reason = "Match the format of what already ranks and cover it better."
+        
+        if analysis.get('serp_features', {}).get('ai_overview') and decision != 'Probably skip':
+            reason += " An AI Overview sits above the results, so expect fewer clicks."
+        
+        return {
+            'decision': decision,
+            'summary': f"{decision}. {rec.get('content_type', '')}. {reason}",
+        }
+    
+    def _analyze_page_types(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Count the page types the classifier assigned to each result"""
+        types = [r.get('classification', {}).get('page_type') for r in results]
+        types = [t for t in types if t in PAGE_TYPE_PROFILES]
+        counts = Counter(types)
+        ranked = [(t, c) for t, c in counts.most_common() if t != 'other']
+        return {'counts': dict(counts), 'ranked': ranked, 'total': len(types)}
+    
+    def _recommend_from_page_types(self, page_types: Dict[str, Any]) -> Dict[str, Any]:
+        """Build the recommendation from the most common page types in the top results"""
+        ranked = page_types['ranked']
+        total = page_types['total']
+        
+        top_type, top_count = ranked[0]
+        top = PAGE_TYPE_PROFILES[top_type]
+        second_type, second_count = ranked[1] if len(ranked) > 1 else (None, 0)
+        
+        # Blend in the runner-up when it holds at least 2 spots and a quarter of the results
+        is_hybrid = second_type is not None and second_count >= 2 and second_count / total >= 0.25
+        
+        elements = list(top['elements'])
+        reasoning = []
+        
+        if is_hybrid:
+            second = PAGE_TYPE_PROFILES[second_type]
+            content_type = f"{top['label']} with {second['label'].lower()} elements"
+            angle = f"{top['angle']} {second['as_second']}"
+            elements += [e for e in second['elements'][:2] if e not in elements]
+            confidence = (top_count + second_count) / total
+            reasoning.append(
+                f"{top_count} of {total} results are {top['plural']} "
+                f"and {second_count} are {second['plural']}"
+            )
+        else:
+            content_type = top['label']
+            angle = top['angle']
+            confidence = top_count / total
+            reasoning.append(f"{top_count} of {total} results are {top['plural']}")
+        
+        if top.get('warning'):
+            reasoning.append(top['warning'])
+        
+        # Forum threads anywhere in the top results signal thin content supply
+        forum_count = page_types['counts'].get('forum_thread', 0)
+        if forum_count and top_type != 'forum_thread':
+            reasoning.append(
+                f"{forum_count} forum thread(s) rank in the top results, "
+                "a sign that good content on this topic is scarce"
+            )
+        
+        return {
+            'content_type': content_type,
+            'format': top['format'],
+            'angle': angle,
+            'required_elements': elements,
+            'reasoning': reasoning,
+            'confidence': round(min(confidence, 0.95), 2),
+            'page_type_counts': page_types['counts'],
+        }
+    
+    def _apply_serp_features(self, rec: Dict[str, Any], features: Dict[str, Any],
+                             total_results: int) -> None:
+        """Add what the SERP features say to the recommendation"""
+        if not features:
+            return
+        
+        rec['serp_features_present'] = features.get('present', [])
+        
+        paa = features.get('people_also_ask', [])
+        if paa:
+            rec['questions_to_answer'] = paa
+            rec['required_elements'].append('Answer the People Also Ask questions (listed below)')
+            rec['reasoning'].append(
+                f"Google shows {len(paa)} People Also Ask questions, a ready-made outline"
+            )
+        
+        related = features.get('related_searches', [])
+        if related:
+            rec['related_searches'] = related
+        
+        aio = features.get('ai_overview')
+        if aio:
+            reason = ("Google shows an AI Overview for this search. Expect fewer clicks, "
+                      "and aim to be one of the sources it cites")
+            sources = aio.get('sources', []) if isinstance(aio, dict) else []
+            domains = []
+            for s in sources:
+                d = s.get('domain', '')
+                if d and d not in domains:
+                    domains.append(d)
+            if domains:
+                reason += f". It currently cites {', '.join(domains[:5])}"
+            rec['reasoning'].append(reason)
+            rec['ai_overview_sources'] = sources
+        
+        if features.get('forums_count'):
+            rec['reasoning'].append(
+                "Google shows a Discussions and forums block, so people want real experience. "
+                "First-hand examples will help"
+            )
+        
+        if features.get('answer_box'):
+            rec['required_elements'].insert(0, 'A short, direct answer in the first paragraph')
+            rec['reasoning'].append(
+                "Google shows a featured answer at the top. A short, direct answer early on can win it"
+            )
+        
+        if features.get('top_stories_count'):
+            rec['reasoning'].append("News stories appear for this search, so freshness matters")
+        
+        if features.get('videos_count'):
+            rec['reasoning'].append("Video results appear. An embedded video could help")
+    
+    def _recommend_from_keywords(self, analysis: Dict[str, Any],
+                                 user_intent: Dict[str, Any]) -> Dict[str, Any]:
+        """Original keyword-based recommendation, used only when page types are unavailable"""
         dist = analysis['result_distribution']
         title_patterns = analysis['title_patterns']
         format_signals = analysis['format_signals']

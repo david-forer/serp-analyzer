@@ -48,9 +48,9 @@ class OutputWriter:
         fieldnames = [
             'position', 'title', 'url', 'snippet', 
             'user_intent', 'intent_confidence', 
-            'result_type', 'result_confidence',
+            'result_type', 'page_type', 'result_confidence',
             # Content strategy columns (query-level)
-            'recommended_content_type', 'recommended_format', 'recommended_angle',
+            'verdict', 'recommended_content_type', 'recommended_format', 'recommended_angle',
             'strategy_confidence', 'required_elements'
         ]
         
@@ -76,8 +76,10 @@ class OutputWriter:
                     'intent_confidence': query_intent.get('confidence', '') if query_intent else '',
                     # Result-level classification (varies per row)
                     'result_type': result.get('classification', {}).get('category', ''),
+                    'page_type': result.get('classification', {}).get('page_type', ''),
                     'result_confidence': result.get('classification', {}).get('confidence', ''),
                     # Content strategy (same for all rows)
+                    'verdict': strategy_rec.get('verdict', {}).get('summary', ''),
                     'recommended_content_type': strategy_rec.get('content_type', ''),
                     'recommended_format': strategy_rec.get('format', ''),
                     'recommended_angle': strategy_rec.get('angle', ''),
@@ -139,6 +141,9 @@ class OutputWriter:
                 f.write("=" * 80 + "\n")
                 f.write("CONTENT STRATEGY RECOMMENDATION\n")
                 f.write("=" * 80 + "\n\n")
+                
+                if rec.get('verdict'):
+                    f.write(f"VERDICT:\n  {rec['verdict']['summary']}\n\n")
                 
                 f.write(f"CONTENT TYPE:\n  {rec.get('content_type', 'N/A')}\n\n")
                 f.write(f"FORMAT:\n  {rec.get('format', 'N/A')}\n\n")

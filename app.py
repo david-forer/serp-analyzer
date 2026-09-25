@@ -208,14 +208,40 @@ class SerpAnalyzerApp:
         self.analyze_btn.config(state=tk.DISABLED)
         self.status_var.set("Analyzing...")
 
+        # Show a rotating loading message on the Overview tab while the analysis runs
+        self._busy = True
+        self._loading_step = 0
+        self.notebook.select(0)
+        self._show_loading_message()
+
         # Run in background thread
         thread = threading.Thread(target=self._do_analysis, args=(query,))
         thread.daemon = True
         thread.start()
 
+    LOADING_LINES = [
+        "Reading the top 10 so you don't have to...",
+        "Asking Google what it really thinks...",
+        "Politely eavesdropping on Reddit...",
+        "Counting how-to guides. There are always more than you'd expect...",
+        "Sorting the listicles from the lookalikes...",
+        "Checking whether an AI already answered this one...",
+        "Judging ten websites by their covers...",
+        "Squinting at the search results...",
+    ]
+
+    def _show_loading_message(self):
+        """Swap in the next loading line every 2.5 seconds until the analysis finishes"""
+        if not getattr(self, "_busy", False):
+            return
+        line = self.LOADING_LINES[self._loading_step % len(self.LOADING_LINES)]
+        self._update_text(self.overview_text, f"We're analyzing your search.\n\n{line}")
+        self._loading_step += 1
+        self.root.after(2500, self._show_loading_message)
+
     def _do_analysis(self, query):
         try:
-            from serper_search import SerperClient
+            from dataforseo_search import get_search_client
             from intent_detector import IntentDetector
             from classifier import ResultClassifier
             from content_strategy_analyzer import ContentStrategyAnalyzer
@@ -224,7 +250,7 @@ class SerpAnalyzerApp:
 
             # Fetch results
             self.root.after(0, lambda: self.status_var.set("Fetching search results..."))
-            search_client = SerperClient()
+            search_client = get_search_client()
             results = search_client.search(query, num_results=num_results)
 
             if not results:
@@ -236,8 +262,13 @@ class SerpAnalyzerApp:
                 "query": query,
                 "timestamp": timestamp,
                 "total_results": len(results),
-                "results": results
+                "results": results,
+                "serp_features": search_client.last_features,
+                "search_source": "DataForSEO" if type(search_client).__name__ == "DataForSEOClient" else "Serper"
             }
+
+            # Save the full Serper response so we can see every SERP feature it returns
+            self._save_raw_response(query, search_client.last_raw)
 
             # Intent detection
             if self.intent_var.get():
@@ -258,6 +289,16 @@ class SerpAnalyzerApp:
                     summary[cat] = summary.get(cat, 0) + 1
                 analysis["classification_summary"] = summary
 
+                # Drop People Also Ask questions that belong to a different meaning of the search
+                features = analysis.get("serp_features") or {}
+                if features.get("people_also_ask"):
+                    self.root.after(0, lambda: self.status_var.set("Checking questions..."))
+                    filtered = classifier.filter_questions(
+                        query, features["people_also_ask"], [r.get("title", "") for r in results]
+                    )
+                    features["people_also_ask"] = filtered["keep"]
+                    features["people_also_ask_removed"] = filtered["removed"]
+
             # Content strategy
             if self.strategy_var.get():
                 self.root.after(0, lambda: self.status_var.set("Analyzing content strategy..."))
@@ -265,26 +306,51 @@ class SerpAnalyzerApp:
                 analysis["content_strategy"] = strategy_analyzer.analyze(
                     query=query,
                     results=analysis["results"],
-                    user_intent=analysis.get("intent")
+                    user_intent=analysis.get("intent"),
+                    serp_features=analysis.get("serp_features")
                 )
 
             self._last_analysis = analysis
             self.root.after(0, lambda: self._display_results(analysis))
 
         except Exception as e:
-            self.root.after(0, lambda: self._show_error(str(e)))
+            msg = str(e)
+            self.root.after(0, lambda: self._show_error(msg))
+
+    def _save_raw_response(self, query, raw):
+        """Write the untouched Serper response to outputs/raw for inspection"""
+        if not raw:
+            return
+        try:
+            import json
+            raw_dir = Path(__file__).parent / "outputs" / "raw"
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            safe_query = "".join(c for c in query if c.isalnum() or c in (' ', '-', '_')).strip()[:50].replace(' ', '_')
+            path = raw_dir / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{safe_query}.json"
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(raw, f, indent=2, ensure_ascii=False)
+        except Exception:
+            # A failed debug save should never stop the analysis
+            pass
 
     def _show_error(self, message):
+        self._busy = False
+        self._update_text(self.overview_text, "Something went wrong. Check the message and try again.")
         self.status_var.set("Error")
         self.analyze_btn.config(state=tk.NORMAL)
         messagebox.showerror("Error", message)
 
     def _display_results(self, data):
+        self._busy = False
         self.status_var.set("Analysis complete!")
         self.analyze_btn.config(state=tk.NORMAL)
 
         # Overview
-        overview = f"Query: {data['query']}\n"
+        overview = ""
+        verdict = data.get("content_strategy", {}).get("recommendation", {}).get("verdict")
+        if verdict:
+            overview += f"VERDICT: {verdict['summary']}\n\n"
+        overview += f"Query: {data['query']}\n"
         overview += f"Results: {data['total_results']}\n"
         overview += f"Timestamp: {data['timestamp']}\n\n"
 
@@ -301,6 +367,19 @@ class SerpAnalyzerApp:
             overview += f"\n=== Recommended Content ===\n"
             overview += f"Type: {rec.get('content_type', 'N/A')}\n"
             overview += f"Format: {rec.get('format', 'N/A')}\n"
+
+        features = data.get("serp_features") or {}
+        if features.get("present"):
+            overview += f"\n=== What Else Is On The Page ===\n"
+            overview += ", ".join(features["present"]) + "\n"
+            aio = features.get("ai_overview")
+            overview += f"AI Overview found: {'yes' if aio else 'no'}\n"
+            if isinstance(aio, dict) and aio.get("sources"):
+                overview += "AI Overview cites:\n"
+                for s in aio["sources"][:8]:
+                    overview += f"  • {s.get('title') or s.get('domain')}  ({s.get('domain', '')})\n"
+
+        overview += f"\nSearch data from: {data.get('search_source', 'Serper')}\n"
 
         self._update_text(self.overview_text, overview)
 
@@ -324,6 +403,8 @@ class SerpAnalyzerApp:
             rec = strategy.get("recommendation", {})
 
             strat_text = "=== Content Strategy Recommendation ===\n\n"
+            if rec.get("verdict"):
+                strat_text += f"VERDICT:\n  {rec['verdict']['summary']}\n\n"
             strat_text += f"CONTENT TYPE:\n  {rec.get('content_type', 'N/A')}\n\n"
             strat_text += f"FORMAT:\n  {rec.get('format', 'N/A')}\n\n"
             strat_text += f"ANGLE:\n  {rec.get('angle', 'N/A')}\n\n"
@@ -338,6 +419,22 @@ class SerpAnalyzerApp:
             for reason in rec.get("reasoning", []):
                 strat_text += f"  • {reason}\n"
 
+            if rec.get("questions_to_answer"):
+                strat_text += "\nQUESTIONS TO ANSWER (People Also Ask):\n"
+                for q in rec["questions_to_answer"]:
+                    strat_text += f"  • {q}\n"
+
+            removed = (data.get("serp_features") or {}).get("people_also_ask_removed") or []
+            if removed:
+                strat_text += "\nOFF-TOPIC QUESTIONS REMOVED:\n"
+                for q in removed:
+                    strat_text += f"  • {q}\n"
+
+            if rec.get("related_searches"):
+                strat_text += "\nSEARCHES TO CHECK NEXT:\n"
+                for q in rec["related_searches"]:
+                    strat_text += f"  • {q}\n"
+
             self._update_text(self.strategy_text, strat_text)
         else:
             self._update_text(self.strategy_text, "Content strategy analysis was skipped.")
@@ -346,7 +443,9 @@ class SerpAnalyzerApp:
         results_text = ""
         for r in data["results"]:
             cat = r.get("classification", {}).get("category", "unknown") if "classification" in r else "N/A"
-            results_text += f"#{r['position']} [{cat.upper()}]\n"
+            page_type = r.get("classification", {}).get("page_type", "")
+            label = f"{cat.upper()} | {page_type.replace('_', ' ')}" if page_type else cat.upper()
+            results_text += f"#{r['position']} [{label}]\n"
             results_text += f"  {r['title']}\n"
             results_text += f"  {r['url']}\n"
             results_text += f"  {r.get('snippet', '')[:200]}...\n\n"
